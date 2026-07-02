@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Spiel: Quadratische Gleichungen</title>
+  <style>
+    :root{
+      --bg:#f7f9fc; --card:#fff; --accent:#2b7cff; --good:#1fa64f; --bad:#de3b3b;
+      font-family: Inter, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    body{
+      margin:0; padding:2rem; background:var(--bg); color:#0b2340;
+      display:flex; justify-content:center; align-items:flex-start; min-height:100vh;
+    }
+    .container{ width:760px; max-width:95%; }
+    header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; }
+    h1{ margin:0; font-size:1.25rem; }
+    .card{ background:var(--card); padding:1rem 1.25rem; border-radius:10px; box-shadow:0 6px 20px rgba(11,35,64,0.07); }
+    .row{ display:flex; gap:1rem; align-items:center; margin-top:0.75rem; }
+    .big{ font-size:1.6rem; font-weight:600; }
+    .equation{ font-family: "Times New Roman", Times, serif; font-size:1.25rem; }
+    input[type="number"]{ padding:0.5rem; border-radius:6px; border:1px solid #d7dbe6; width:120px; }
+    button{ background:var(--accent); color:white; border:none; padding:0.6rem 0.9rem; border-radius:8px; cursor:pointer; }
+    button.secondary{ background:#e9eefc; color:var(--accent); border:1px solid rgba(43,124,255,0.12); }
+    .status{ margin-top:0.75rem; padding:0.6rem; border-radius:8px; }
+    .ok{ background:rgba(31,166,79,0.12); color:var(--good); border-left:4px solid var(--good); }
+    .err{ background:rgba(222,59,59,0.08); color:var(--bad); border-left:4px solid var(--bad); }
+    .hint{ margin-top:0.5rem; color:#345; font-size:0.95rem; }
+    footer{ margin-top:0.9rem; display:flex; justify-content:space-between; align-items:center; font-size:0.92rem; color:#435; }
+    .small{ font-size:0.88rem; color:#576777; }
+    .score{ background:#fff; padding:0.4rem 0.6rem; border-radius:8px; border:1px solid #e6eefc; }
+    .controls{ display:flex; gap:0.5rem; align-items:center; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Spiel: Quadratische Gleichungen</h1>
+      <div class="small">Duzeingang | FWU-Style</div>
+    </header>
+
+    <div class="card" id="game">
+      <div class="row">
+        <div>
+          <div class="small">Aufgabe</div>
+          <div class="equation big" id="equation">—</div>
+        </div>
+        <div style="margin-left:auto">
+          <div class="small">Schwierigkeitsgrad</div>
+          <select id="level">
+            <option value="1">Einfach (a=1, ganzzahlig)</option>
+            <option value="2">Mittel (a≠1, ganzzahlig)</option>
+            <option value="3">Schwer (Brüche / Dezimal)</option>
+          </select>
+        </div>
+      </div>
+
+      <hr style="margin:12px 0; border:0; border-top:1px solid #eef3fb;" />
+
+      <div class="row">
+        <div>
+          <div class="small">Gib die Lösungen (x₁, x₂) ein</div>
+          <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
+            <input id="x1" type="text" placeholder="x₁ (z. B. 2 oder 1/2)" />
+            <input id="x2" type="text" placeholder="x₂ (z. B. -3 oder -1/2)" />
+            <button id="check">Überprüfen</button>
+            <button id="hintBtn" class="secondary">Hinweis</button>
+          </div>
+        </div>
+        <div style="margin-left:auto; text-align:right;">
+          <div class="small">Punkte</div>
+          <div class="score" id="score">0</div>
+          <div class="small" style="margin-top:6px">Versuche: <span id="tries">0</span></div>
+        </div>
+      </div>
+
+      <div id="statusArea" style="margin-top:0.9rem"></div>
+
+      <div class="hint" id="hintText"></div>
+
+      <footer>
+        <div class="small">Tipps: Du kannst auch Wurzeln in Dezimal- oder Bruchform eingeben (z. B. 0.5 oder 1/2).</div>
+        <div class="controls">
+          <button id="newQ" class="secondary">Neue Aufgabe</button>
+          <button id="showSteps" class="secondary">Lösung anzeigen</button>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <script>
+    // Hilfsfunktionen
+    function randInt(min, max){
+      return Math.floor(Math.random()*(max-min+1)) + min;
+    }
+
+    function gcd(a,b){ a=Math.abs(a); b=Math.abs(b); while(b){ [a,b]=[b,a%b]; } return a; }
+    function toFraction(n, maxDen=1000){
+      // n can be number or string with fraction
+      if(typeof n === 'string'){
+        n = n.trim();
+        if(n.includes('/')){
+          const parts = n.split('/').map(s=>parseFloat(s));
+          if(parts.length===2 && !isNaN(parts[0]) && !isNaN(parts[1]) && parts[1] !== 0){
+            return {num:parts[0], den:parts[1], val:parts[0]/parts[1]};
+          }
+        }
+        const val = parseFloat(n);
+        if(isNaN(val)) return null;
+        n = val;
+      }
+      let sign = n < 0 ? -1 : 1;
+      n = Math.abs(n);
+      let best = {num:0, den:1, err:Infinity, val:0};
+      for(let q=1; q<=maxDen; q++){
+        let p = Math.round(n*q);
+        let err = Math.abs(n - p/q);
+        if(err < best.err){ best = {num:p*sign, den:q, err, val: (p/q)*sign}; if(err===0) break; }
+      }
+      const g = gcd(best.num, best.den);
+      return {num:best.num/g, den:best.den/g, val:best.val};
+    }
+
+    function parseInputAsNumber(str){
+      if(!str) return null;
+      str = str.trim().replace(',', '.');
+      if(str.includes('/')){
+        const parts = str.split('/');
+        if(parts.length!==2) return null;
+        const a = parseFloat(parts[0]);
+        const b = parseFloat(parts[1]);
+        if(isNaN(a) || isNaN(b) || b===0) return null;
+        return a/b;
+      }
+      const val = parseFloat(str);
+      return isNaN(val) ? null : val;
+    }
+
+    // Spielzustand
+    let state = {
+      a:1, b:0, c:0,
+      roots: [], // numeric roots (could be complex? we'll avoid complex tasks)
+      score:0, tries:0,
+      maxAttemptsPerQuestion:2
+    };
+
+    function setEquationText(){
+      const a = state.a, b = state.b, c = state.c;
+      function term(coef, variable){
+        if(coef === 0) return '';
+        if(variable === 'x^2'){
+          if(coef === 1) return 'x²';
+          if(coef === -1) return '-x²';
+          return coef + 'x²';
+        }
+        if(variable === 'x'){
+          if(coef === 1) return '+ x';
+          if(coef === -1) return '- x';
+          return (coef>0?'+ ':'- ') + Math.abs(coef) + 'x';
+        }
+        // constant
+        if(coef>0) return (coef>0?'+ ':'- ') + Math.abs(coef);
+        return (coef<0?'- ':'') + Math.abs(coef);
+      }
+      let eq = '';
+      // build manually for nicer signs
+      if(a === 1) eq += 'x²'; else if(a === -1) eq += '-x²'; else eq += (a!==0? a+'x²':'');
+      if(b !== 0){
+        if(b>0) eq += ' + ' + (Math.abs(b)===1? 'x' : Math.abs(b)+'x');
+        else eq += ' - ' + (Math.abs(b)===1? 'x' : Math.abs(b)+'x');
+      }
+      if(c !== 0){
+        if(c>0) eq += ' + ' + Math.abs(c);
+        else eq += ' - ' + Math.abs(c);
+      }
+      if(eq === '') eq = '0';
+      eq += ' = 0';
+      document.getElementById('equation').textContent = eq;
+    }
+
+    function computeRoots(a,b,c){
+      // only real roots tasks in this simple game
+      const disc = b*b - 4*a*c;
+      if(disc < 0) return null;
+      const r1 = (-b + Math.sqrt(disc)) / (2*a);
+      const r2 = (-b - Math.sqrt(disc)) / (2*a);
+      return [r1, r2];
+    }
+
+    function newQuestion(){
+      const level = parseInt(document.getElementById('level').value,10);
+      let a,b,c;
+      while(true){
+        if(level===1){
+          a = 1;
+          b = randInt(-8,8);
+          c = randInt(-12,12);
+        } else if(level===2){
+          a = randInt(-3,3);
+          if(a===0) a = 2;
+          b = randInt(-12,12);
+          c = randInt(-12,12);
+        } else {
+          // decimals or fractions (we'll allow decimals)
+          a = randInt(-5,5);
+          if(a===0) a = randInt(1,5);
+          b = (Math.random()*20 - 10);
+          c = (Math.random()*20 - 10);
+          // round to 1 decimal
+          b = Math.round(b*10)/10;
+          c = Math.round(c*10)/10;
+        }
+        // avoid too large trivialities
+        if(Math.abs(b) > 30 || Math.abs(c) > 30) continue;
+        const roots = computeRoots(a,b,c);
+        if(roots && roots.every(r => isFinite(r) && Math.abs(r) < 1000)) {
+          // require discriminant to be non-negative and reasonably nice
+          state.a=a; state.b=b; state.c=c; state.roots = roots;
+          state.currentAttempts = 0;
+          setEquationText();
+          clearStatus();
+          document.getElementById('x1').value=''; document.getElementById('x2').value='';
+          document.getElementById('hintText').textContent='';
+          break;
+        }
+      }
+    }
+
+    function clearStatus(){
+      const area = document.getElementById('statusArea');
+      area.innerHTML = '';
+    }
+
+    function showStatus(msg, ok=true){
+      const area = document.getElementById('statusArea');
+      area.innerHTML = '<div class="status '+(ok?'ok':'err')+'">'+msg+'</div>';
+    }
+
+    function checkAnswer(){
+      const in1 = document.getElementById('x1').value;
+      const in2 = document.getElementById('x2').value;
+      const v1 = parseInputAsNumber(in1);
+      const v2 = parseInputAsNumber(in2);
+      if(v1 === null || v2 === null){
+        showStatus('Bitte zwei gültige Zahlen eingeben (z. B. 2, -1/2 oder 0.5).', false);
+        return;
+      }
+      state.currentAttempts = (state.currentAttempts || 0) + 1;
+      state.tries = (state.tries || 0) + 1;
+      document.getElementById('tries').textContent = state.tries;
+      // Compare ignoring order, allow small tolerance
+      const tol = 1e-6;
+      const r = state.roots;
+      const match1 = (Math.abs(v1 - r[0]) < tol && Math.abs(v2 - r[1]) < tol) ||
+                     (Math.abs(v1 - r[1]) < tol && Math.abs(v2 - r[0]) < tol);
+      const matchApprox = (Math.abs(v1 - r[0]) < 1e-3 && Math.abs(v2 - r[1]) < 1e-3) ||
+                          (Math.abs(v1 - r[1]) < 1e-3 && Math.abs(v2 - r[0]) < 1e-3);
+      if(match1 || matchApprox){
+        // Punkte: volle Punkte, evtl. Bonus wenn erster Versuch
+        let points = state.currentAttempts === 1 ? 10 : 5;
+        state.score += points;
+        document.getElementById('score').textContent = state.score;
+        showStatus('Richtig! Du erhältst '+points+' Punkte. Gute Arbeit!', true);
+      } else {
+        if(state.currentAttempts >= state.maxAttemptsPerQuestion){
+          // reveal
+          const r0 = state.roots[0], r1 = state.roots[1];
+          showStatus('Leider falsch. Die richtigen Lösungen sind x₁ = '+formatNumber(r0)+' und x₂ = '+formatNumber(r1)+'.', false);
+        } else {
+          showStatus('Nicht ganz richtig. Versuch es noch einmal oder nutze einen Hinweis.', false);
+        }
+      }
+    }
+
+    function formatNumber(x){
+      // if near integer
+      if(Math.abs(x - Math.round(x)) < 1e-8) return String(Math.round(x));
+      // else give fraction if simple
+      const frac = toFraction(x, 50);
+      if(Math.abs(frac.val - x) < 1e-6 && Math.abs(frac.den) <= 20){
+        return (frac.num < 0 ? '-' : '') + Math.abs(frac.num) + '/' + Math.abs(frac.den);
+      }
+      return String(Math.round(x*1000)/1000);
+    }
+
+    function showHint(){
+      // Provide step hint: Diskriminante, dann Wurzel
+      const a = state.a, b = state.b, c = state.c;
+      const disc = b*b - 4*a*c;
+      const text = 'Berechne die Diskriminante: D = b² - 4ac = ' + (b*b) + ' - 4·' + a + '·' + c + ' = ' + disc +
+                   '. Falls D ≥ 0: x = (-b ± √D) / (2a).';
+      document.getElementById('hintText').textContent = text;
+    }
+
+    // Show full solution (steps)
+    function showSolution(){
+      const a = state.a, b = state.b, c = state.c;
+      const disc = b*b - 4*a*c;
+      if(disc < 0){
+        document.getElementById('hintText').textContent = 'Die Diskriminante ist negativ. Keine reellen Lösungen.';
+        return;
+      }
+      const r1 = state.roots[0], r2 = state.roots[1];
+      const s = 'Diskriminante D = ' + disc + '.\n' +
+                'x = (-b ± √D) / (2a) ⇒ ' +
+                'x₁ = ' + formatNumber(r1) + ', x₂ = ' + formatNumber(r2) + '.';
+      document.getElementById('hintText').textContent = s;
+    }
+
+    // Event-Handler
+    document.getElementById('newQ').addEventListener('click', newQuestion);
+    document.getElementById('check').addEventListener('click', checkAnswer);
+    document.getElementById('hintBtn').addEventListener('click', showHint);
+    document.getElementById('showSteps').addEventListener('click', showSolution);
+    document.getElementById('level').addEventListener('change', newQuestion);
+
+    // Initialize
+    newQuestion();
+  </script>
+</body>
+</html>
